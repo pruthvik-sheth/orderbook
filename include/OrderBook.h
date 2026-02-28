@@ -18,6 +18,7 @@ private:
 
     std::unordered_map<int, std::shared_ptr<Order>> orderMap;
 
+    bool silent = true;
 
     void matchOrders() {
         while (!bids.empty() && !asks.empty()) {
@@ -39,7 +40,7 @@ private:
             int tradeQty = std::min(bidOrder->quantity, askOrder->quantity);
             double tradePrice = askOrder->price;
 
-            std::cout << "TRADE: "
+            if (!silent) std::cout << "TRADE: "
                       << tradeQty << " units at $" << tradePrice
                       << " [BuyID=" << bidOrder->id 
                       << " SellID=" << askOrder->id << "]"
@@ -72,38 +73,42 @@ private:
 
 public:
 
-    // Destructor (now we dont need a destructor because we are using smart pointers)
-    // ~OrderBook() {
-    //     for (Order* ptr : orders) {
-    //         delete ptr;
-    //     }
-    // }
+    void setSilent(bool s) {
+        silent = s;
+    }
 
     void addOrder (Order order) {
         
         std::shared_ptr<Order> ptr = std::make_shared<Order>(order);
         orderMap[order.id] = ptr;
 
+        if (!silent) std::cout << "Order added: ID=" << order.id
+              << " Side=" << (order.side == Side::BUY ? "BUY" : "SELL")
+              << " Price=" << order.price
+              << " Qty=" << order.quantity
+              << " Type=" << (order.type == OrderType::GTC ? "GTC" : "FAK")
+              << std::endl;
+
         if (order.side == Side::BUY) {
             bids[order.price].push_back(ptr);
         } else {
             asks[order.price].push_back(ptr);
         }
-
-        std::cout << "Order added: ID=" << order.id
-                  << " Side=" << (order.side == Side::BUY ? "BUY" : "SELL")
-                  << " Price=" << order.price
-                  << " Qty=" << order.quantity
-                  << std::endl;
-
         // Try to match after new order has arrived
         matchOrders();
+
+        if (order.type == OrderType::FAK && ptr->quantity > 0) {
+            if (!silent) std::cout << "FAK order partially filled — killing remaining "
+                  << ptr->quantity << " units of ID=" << order.id
+                  << std::endl;
+            cancelOrder(order.id);
+        }
     }
 
     bool cancelOrder (int id) {
         // Check if the ID exists in our map
         if (orderMap.count(id) == 0) {
-            std::cout << "Order not found: ID=" << id << std::endl;
+            if (!silent) std::cout << "Order not found: ID=" << id << std::endl;
             return false;
         }
  
@@ -135,33 +140,37 @@ public:
         }
 
         orderMap.erase(id);
-        std::cout << "Order cancelled: ID=" << id << std::endl;
+        if (!silent) std::cout << "Order cancelled: ID=" << id << std::endl;
         return true;
     }
 
+    // This function does not modify anyhting and hence 
+    // it is marked as const for code quality
+    void printOrders() const {
+        if (!silent) std::cout << "\n--- Order Book ---" << std::endl;
 
-    void printOrders() {
-        std::cout << "\n--- Order Book ---" << std::endl;
-
-        std::cout << "ASKS:" << std::endl;
+        if (!silent) std::cout << "ASKS:" << std::endl;
         if (asks.empty()) {
-            std::cout << "  (empty)" << std::endl;
+            if (!silent) std::cout << "  (empty)" << std::endl;
         }
-        for (auto& level : asks) {
-            for (auto& ptr : level.second) {
-                std::cout << "  $" << level.first 
+        // The reason we are doing const auto is because
+        // We want to prevent unwanted bugs in this code block
+        // This code block solely reads and does not modify anything
+        for (const auto& level : asks) {
+            for (const auto& ptr : level.second) {
+                if (!silent) std::cout << "  $" << level.first 
                           << " Qty=" << ptr->quantity 
                           << " ID=" << ptr->id << std::endl;
             }
         }
 
-        std::cout << "BIDS:" << std::endl;
+        if (!silent) std::cout << "BIDS:" << std::endl;
         if (bids.empty()) {
-            std::cout << "  (empty)" << std::endl;
+            if (!silent) std::cout << "  (empty)" << std::endl;
         }
-        for (auto& level : bids) {
-            for (auto& ptr : level.second) {
-                std::cout << "  $" << level.first 
+        for (const auto& level : bids) {
+            for (const auto& ptr : level.second) {
+                if (!silent) std::cout << "  $" << level.first 
                           << " Qty=" << ptr->quantity 
                           << " ID=" << ptr->id << std::endl;
             }
@@ -169,7 +178,7 @@ public:
     }
 
 
-    int count() {
+    int count() const {
         return orderMap.size();
     }
 };

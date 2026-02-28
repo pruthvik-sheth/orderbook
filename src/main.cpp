@@ -5,25 +5,20 @@
 int main() {
     OrderBook book;
 
-    book.addOrder(Order(1, Side::BUY,  99.50, 100));
-    book.addOrder(Order(2, Side::BUY,  99.75, 200));
-    book.addOrder(Order(3, Side::SELL, 101.00, 150));
-    book.addOrder(Order(4, Side::SELL, 101.25,  75));
-
+    std::cout << "=== Setting up the book ===" << std::endl;
+    book.addOrder(Order(1, Side::SELL, 101.00, 75));
+    book.addOrder(Order(2, Side::SELL, 102.00, 50));
     book.printOrders();
 
-    // Cancel order 2
-    book.cancelOrder(2);
-
-    // Now cancel order 3 — this should work correctly now
-    book.cancelOrder(3);
-
-    // Try non-existent
-    book.cancelOrder(99);
-
+    std::cout << "\n=== GTC Order — partial fill, rest stays ===" << std::endl;
+    // Wants 200 but only 75 available at 101 — remaining 125 stays in book
+    book.addOrder(Order(3, Side::BUY, 101.00, 200, OrderType::GTC));
     book.printOrders();
 
-    std::cout << "Total orders: " << book.count() << std::endl;
+    std::cout << "\n=== FAK Order — partial fill, rest killed ===" << std::endl;
+    // Wants 100 but only 50 available at 102 — remaining 50 gets killed
+    book.addOrder(Order(4, Side::BUY, 102.00, 100, OrderType::FAK));
+    book.printOrders();
 
     return 0;
 }
