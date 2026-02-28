@@ -5,7 +5,6 @@
 int main() {
     OrderBook book;
 
-    // Add orders
     book.addOrder(Order(1, Side::BUY,  99.50, 100));
     book.addOrder(Order(2, Side::BUY,  99.75, 200));
     book.addOrder(Order(3, Side::SELL, 101.00, 150));
@@ -13,9 +12,14 @@ int main() {
 
     book.printOrders();
 
-    // Cancel using instant O(1) lookup now
+    // Cancel order 2
     book.cancelOrder(2);
-    book.cancelOrder(99);  // doesn't exist
+
+    // Now cancel order 3 — this should work correctly now
+    book.cancelOrder(3);
+
+    // Try non-existent
+    book.cancelOrder(99);
 
     book.printOrders();
 

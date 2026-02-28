@@ -2,53 +2,102 @@
 #include <vector>
 #include <unordered_map>
 #include <iostream>
+#include <memory>
+#include <map>
 #include "Order.h"
 
 class OrderBook {
 private:
-     // Stores all orders in insertion order
-    std::vector<Order*> orders;
+    // Using Smart Pointers
 
-    // Maps order ID → position in vector for instant lookup
-    // TODO: later we'll store smarter references, not just index
-    std::unordered_map<int, Order*> orderMap;  // key=orderID, value=index in vector
+    //Bids (Soreted Highest to Lowest)
+    std::map<double, std::vector<std::shared_ptr<Order>>, std::greater<double>> bids;
 
-public:
+    // Asks (Sorted from Lowest to Highest)
+    std::map<double, std::vector<std::shared_ptr<Order>>> asks;
 
-    // Destructor
-    ~OrderBook() {
-        for (Order* ptr : orders) {
-            delete ptr;
+    std::unordered_map<int, std::shared_ptr<Order>> orderMap;
+
+
+    void matchOrders() {
+        while (!bids.empty() && !asks.empty()) {
+
+            auto& bestBidLevel = bids.begin()->second; // This will give me the vector of highestbids
+            auto& bestAskLevel = asks.begin()->second;
+
+            double highestBidPrice = bids.begin()->first;
+            double lowestAskPrice = asks.begin()->first;
+
+            // If highestBid is less than the lowestAsk then I need to break this loop
+            if (highestBidPrice < lowestAskPrice) {
+                break; // No match is possible from this point
+            }
+
+            std::shared_ptr<Order> bidOrder = bestBidLevel.front();
+            std::shared_ptr<Order> askOrder = bestAskLevel.front();
+
+            int tradeQty = std::min(bidOrder->quantity, askOrder->quantity);
+            double tradePrice = askOrder->price;
+
+            std::cout << "TRADE: "
+                      << tradeQty << " units at $" << tradePrice
+                      << " [BuyID=" << bidOrder->id 
+                      << " SellID=" << askOrder->id << "]"
+                      << std::endl;
+
+            // Reduce the quantities
+            bidOrder->quantity -= tradeQty;
+            askOrder->quantity -= tradeQty;
+
+
+            // Renove the fully filled orders from asks
+            if (askOrder->quantity == 0) {
+                orderMap.erase(askOrder->id);
+                bestAskLevel.erase(bestAskLevel.begin());
+                if (bestAskLevel.empty()) {
+                    asks.erase(asks.begin());
+                }
+            }
+
+            // Remove the fully filled orders from bids
+            if (bidOrder->quantity == 0) {
+                orderMap.erase(bidOrder->id);
+                bestBidLevel.erase(bestBidLevel.begin());
+                if (bestBidLevel.empty()) {
+                    bids.erase(bids.begin());
+                }
+            }
         }
     }
 
+public:
+
+    // Destructor (now we dont need a destructor because we are using smart pointers)
+    // ~OrderBook() {
+    //     for (Order* ptr : orders) {
+    //         delete ptr;
+    //     }
+    // }
+
     void addOrder (Order order) {
-        Order* ptr = new Order(order);
+        
+        std::shared_ptr<Order> ptr = std::make_shared<Order>(order);
         orderMap[order.id] = ptr;
 
-        // Add to vector
-        orders.push_back(ptr);
+        if (order.side == Side::BUY) {
+            bids[order.price].push_back(ptr);
+        } else {
+            asks[order.price].push_back(ptr);
+        }
 
         std::cout << "Order added: ID=" << order.id
                   << " Side=" << (order.side == Side::BUY ? "BUY" : "SELL")
                   << " Price=" << order.price
                   << " Qty=" << order.quantity
                   << std::endl;
-    }
 
-    void printOrders() {
-        std::cout << "\n--- Order Book ---" << std::endl;
-        if (orders.empty()) {
-            std::cout << "Book is empty." << std::endl;
-            return;
-        }
-        for (Order* orderPtr : orders) {
-            std::cout << "ID=" << orderPtr->id 
-                      << " Side=" << (orderPtr->side == Side::BUY ? "BUY" : "SELL")
-                      << " Price=" << orderPtr->price 
-                      << " Qty=" << orderPtr->quantity 
-                      << std::endl;
-        }
+        // Try to match after new order has arrived
+        matchOrders();
     }
 
     bool cancelOrder (int id) {
@@ -58,24 +107,69 @@ public:
             return false;
         }
  
-        Order* ptr = orderMap[id];
+        std::shared_ptr<Order> ptr = orderMap[id];
 
-        for (auto it = orders.begin(); it != orders.end(); it++) {
-            if (*it == ptr) {
-                orders.erase(it);
-                break;
+        if (ptr->side == Side::BUY) {
+            auto& level = bids[ptr->price];
+
+            for (auto it = level.begin(); it != level.end(); it++) {
+                if (*it == ptr) {
+                    level.erase(it);
+                    break;
+                }
+            }
+            if (level.empty()) {
+                bids.erase(ptr->price);
+            }
+        } else {
+            auto& level = asks[ptr->price];
+            for (auto it = level.begin(); it != level.end(); it++) {
+                if (*it == ptr) {
+                    level.erase(it);
+                    break;
+                }
+            }
+            if (level.empty()) {
+                asks.erase(ptr->price);
             }
         }
 
         orderMap.erase(id);
-
-
-        delete ptr;
+        std::cout << "Order cancelled: ID=" << id << std::endl;
         return true;
     }
 
 
+    void printOrders() {
+        std::cout << "\n--- Order Book ---" << std::endl;
+
+        std::cout << "ASKS:" << std::endl;
+        if (asks.empty()) {
+            std::cout << "  (empty)" << std::endl;
+        }
+        for (auto& level : asks) {
+            for (auto& ptr : level.second) {
+                std::cout << "  $" << level.first 
+                          << " Qty=" << ptr->quantity 
+                          << " ID=" << ptr->id << std::endl;
+            }
+        }
+
+        std::cout << "BIDS:" << std::endl;
+        if (bids.empty()) {
+            std::cout << "  (empty)" << std::endl;
+        }
+        for (auto& level : bids) {
+            for (auto& ptr : level.second) {
+                std::cout << "  $" << level.first 
+                          << " Qty=" << ptr->quantity 
+                          << " ID=" << ptr->id << std::endl;
+            }
+        }
+    }
+
+
     int count() {
-        return orders.size();
+        return orderMap.size();
     }
 };
